@@ -1,0 +1,993 @@
+# ============================================================================
+# DOCKER COMPOSE - ORKESTRA ŞEFİ DOSYASI
+# ============================================================================
+#
+# 📌 DOCKER COMPOSE NEDİR?
+# Birden fazla container'ı tek bir dosyadan yöneten araç.
+# Tek komutla (docker-compose up) tüm servisleri başlatır.
+#
+# 🤔 NEDEN DOCKER COMPOSE?
+# Tek tek docker run yerine tek bir YAML dosyası:
+# - Tüm servisler burada tanımlı
+# - Network'ler otomatik oluşturulur
+# - Volume'ler otomatik bağlanır
+# - Başlatma sırası belirlenebilir
+#
+# ☕ GÜNLÜK HAYAT ÖRNEĞİ:
+# Orkestra şefi gibi:
+# - Her müzisyen (container) = Bir servis
+# - Orkestra şefi (docker-compose) = Hepsini koordine eder
+# - Nota (YAML dosyası) = Her şey buraya yazılı
+#
+# 🔧 TEKNİK DETAY:
+# YAML formatı: Girinti önemli! Tab değil, 2 veya 4 space kullan.
+# Ana bölümler: services, volumes, networks, secrets
+#
+# ============================================================================
+
+# ============================================================================
+# SECRETS - GİZLİ BİLGİLER
+# ============================================================================
+#
+# 📌 SECRETS NEDİR?
+# Hassas bilgileri (şifre, API key vs.) güvenli şekilde saklar.
+# Container'lar bu bilgilere /run/secrets/ altından erişir.
+#
+# 🤔 NEDEN ENVIRONMENT VARIABLE DEĞİL?
+# Environment variable'lar:
+# - docker inspect ile görülebilir (güvensiz)
+# - Log'lara düşebilir
+# - Process listesinde görünebilir
+#
+# Secrets:
+# - Sadece ihtiyacı olan container erişir
+# - tmpfs'te saklanır (RAM'de, disk değil)
+# - Container silinince kaybolur
+#
+# ☕ GÜNLÜK HAYAT ÖRNEĞİ:
+# Banka kasası gibi:
+# - Şifreleri beyaz tahtaya yazmak = Environment variable (herkes görür)
+# - Şifreleri kasada saklamak = Secrets (sadece anahtarı olan açar)
+#
+# 🔧 TEKNİK DETAY:
+# file: Dosyadan oku (Docker Swarm'da farklı yöntemler de var)
+# Container içinde: /run/secrets/db_password şeklinde erişilir
+#
+# 🔗 DİĞER DOSYALARLA İLİŞKİ:
+# - ../secrets/db_password.txt: Veritabanı kullanıcı şifresi
+# - ../secrets/db_root_password.txt: Root şifresi
+# - ../secrets/credentials.txt: Tüm kullanıcı bilgileri
+# - setup-mysql.sh: Bu dosyaları okur
+# - wordpress-start.sh: Credentials'ı kullanır
+#
+# ⚠️ ÖNEMLİ:
+# secrets/ klasörünü .gitignore'a ekle!
+# Şifreleri GitHub'a pushlama!
+# ============================================================================
+secrets:
+  # Veritabanı kullanıcı şifresi
+  # MariaDB ve WordPress bu şifreyi kullanır
+  db_password:
+    file: ../secrets/db_password.txt
+  
+  # Veritabanı root şifresi
+  # Sadece MariaDB kurulumu için gerekli
+  db_root_password:
+    file: ../secrets/db_root_password.txt
+  
+  # WordPress ve veritabanı kullanıcı bilgileri
+  # Tüm environment variable'lar burada
+  credentials:
+    file: ../secrets/credentials.txt
+
+# ============================================================================
+# VOLUMES - VERİ DEPOLAMA
+# ============================================================================
+#
+# 📌 VOLUME NEDİR?
+# Container'ların verilerini kalıcı olarak saklar.
+# Container silinse bile veriler kalır.
+#
+# 🤔 NEDEN VOLUME?
+# Container'lar geçici (ephemeral):
+# - Container sil → İçindeki her şey gider
+# - Volume kullan → Veriler kalır
+#
+# ☕ GÜNLÜK HAYAT ÖRNEĞİ:
+# Depo sistemi:
+# - Ev (container) yıkılsa bile depo (volume) kalır
+# - Yeni ev yap, aynı depoyu kullan
+# - Eşyalar (veriler) kaybolmaz
+#
+# 🔧 TEKNİK DETAY:
+# driver: local = Yerel disk kullan
+# type: none = Bind mount (klasör bağlama)
+# o: bind = Mount seçenekleri
+# device: Hangi klasör bağlanacak
+#
+# 💡 VOLUME TÜRLERİ:
+# 1. Named Volume: Docker yönetir (/var/lib/docker/volumes/)
+# 2. Bind Mount: Kendi klasörünü bağla (bu projede kullanılan)
+# 3. tmpfs: RAM'de geçici
+#
+# 🔗 DİĞER DOSYALARLA İLİŞKİ:
+# - Makefile: mkdir -p ${HOME}/data/... (klasörleri oluşturur)
+# - MariaDB: /var/lib/mysql → ${HOME}/data/mariadb
+# - WordPress: /var/www/html → ${HOME}/data/wordpress
+#
+# ⚠️ ÖNEMLİ:
+# ${HOME}/data/ klasörlerini silme!
+# Tüm WordPress içeriği ve veritabanı burada!
+# ============================================================================
+volumes:
+  # ============================================================================
+  # MARIADB VOLUME - Veritabanı Verileri
+  # ============================================================================
+  #
+  # 📌 BU VOLUME NE İÇİN?
+  # MariaDB veritabanının tüm verilerini saklar:
+  # - Tablolar
+  # - İndeksler
+  # - Kullanıcı bilgileri
+  # - WordPress içeriği (makaleler, yorumlar, ayarlar)
+  #
+  # 🤔 NEDEN BIND MOUNT?
+  # Alternatif named volume olabilirdi ama:
+  # - Bind mount: Veriler bildiğin yerde (${HOME}/data/mariadb)
+  # - Kolay yedekleme (cp komutuyla kopyala)
+  # - Kolay inceleme (ls ile bak)
+  # - Named volume: Docker'ın içinde gizli yerde
+  #
+  # ☕ GÜNLÜK HAYAT ÖRNEĞİ:
+  # Arşiv odası:
+  # - type: none + o: bind = Kendi deponuzu kullan
+  # - device: ${HOME}/data/mariadb = Deponun adresi
+  # - Container silinse bile arşiv yerinde durur
+  #
+  # 🔧 TEKNİK DETAY:
+  # driver: local → Yerel disk kullan (NFS, AWS EBS gibi alternatifler var)
+  # driver_opts: Driver'a özel ayarlar
+  #   - type: none → Bind mount yap
+  #   - o: bind → Mount options (bind type)
+  #   - device: Kaynak klasör (host'taki gerçek klasör)
+  #
+  # 🔗 CONTAINER İÇİNDE NEREDE?
+  # /var/lib/mysql → MariaDB'nin default veri klasörü
+  # İçinde:
+  #   - mysql/ (sistem tabloları)
+  #   - wordpress_db/ (WordPress veritabanı)
+  #   - ib_logfile* (transaction logları)
+  #   - ibdata1 (InnoDB data file)
+  #
+  # ⚠️ DİKKAT:
+  # Bu klasörü elle değiştirme! MariaDB bozulabilir.
+  # Yedekleme için mysqldump kullan.
+  # ============================================================================
+  mariadb_volume:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${HOME}/data/mariadb
+
+  # ============================================================================
+  # WORDPRESS VOLUME - WordPress Dosyaları
+  # ============================================================================
+  #
+  # 📌 BU VOLUME NE İÇİN?
+  # WordPress'in tüm dosyalarını saklar:
+  # - wp-content/ (temalar, eklentiler, yüklenen medya)
+  # - wp-config.php (veritabanı bağlantı ayarları)
+  # - Core dosyalar (index.php, wp-admin, wp-includes)
+  #
+  # 🤔 NEDEN NGINX DE BU VOLUME'Ü KULLANIR?
+  # WordPress PHP dosyalarını çalıştırır (PHP-FPM)
+  # Nginx static dosyaları serve eder (CSS, JS, resimler)
+  # İkisi de aynı dosyalara erişmeli!
+  #
+  # ☕ GÜNLÜK HAYAT ÖRNEĞİ:
+  # Ortak mutfak:
+  # - WordPress (aşçı) = Yemekleri pişirir (PHP çalıştırır)
+  # - Nginx (garson) = Yemekleri servis eder (dosyaları gönderir)
+  # - İkisi de aynı mutfağı kullanır (aynı volume)
+  #
+  # 🔧 TEKNİK DETAY:
+  # Aynı volume'ü 2 servis kullanır:
+  #   - wordpress container: /var/www/html (okuma + yazma)
+  #   - nginx container: /var/www/html (sadece okuma)
+  #
+  # 🔗 CONTAINER İÇİNDE NEREDE?
+  # /var/www/html → WordPress'in default klasörü
+  # İçinde:
+  #   - wp-content/uploads/ (kullanıcı yüklemeleri)
+  #   - wp-content/themes/ (temalar)
+  #   - wp-content/plugins/ (eklentiler)
+  #   - wp-config.php (kritik ayar dosyası)
+  #
+  # 💡 İLGİNÇ DETAY:
+  # wordpress-start.sh WP-CLI ile WordPress'i buraya kurar.
+  # Container ilk başladığında bu klasör boştur.
+  # Script çalışınca WordPress dosyaları indirilir.
+  #
+  # ⚠️ YEDEKLEMEhtml klasörünü düzenli yedekle!
+  # Burada hem kod hem kullanıcı içeriği var.
+  # ============================================================================
+  wordpress_volume:
+    driver : local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${HOME}/data/wordpress
+
+# ============================================================================
+# NETWORKS - AĞLAR
+# ============================================================================
+#
+# 📌 NETWORK NEDİR?
+# Container'ların birbirleriyle konuşmasını sağlar.
+# Aynı network'teki container'lar birbirini isimle bulur.
+#
+# 🤔 NEDEN NETWORK GEREKLİ?
+# Container'lar izole ortamlardır:
+# - Varsayılan: Birbirlerini görmezler
+# - Network ile: Birbirlerini bulabilirler
+#
+# ☕ GÜNLÜK HAYAT ÖRNEĞİ:
+# Apartman interkomu:
+# - Her daire (container) kendi içinde
+# - İnterkom (network) ile komşuları arayabilir
+# - "3. kat Ahmet" yerine "mariadb" de
+#
+# 🔧 TEKNİK DETAY:
+# driver: bridge → En yaygın network tipi
+# Bridge network:
+#   - Container'lar sanal network'te izole
+#   - Birbirlerini container name ile bulur
+#   - DNS çözümlemesi otomatik
+#
+# 💡 ALTERNATİF DRIVER'LAR:
+#   - host: Host'un network'ünü kullan (port mapping yok)
+#   - none: Network yok (tam izolasyon)
+#   - overlay: Birden fazla host'ta container (Swarm)
+#
+# 🔗 NASIL ÇALIŞIR?
+# wordpress container'dan MariaDB'ye bağlanma:
+#   Host: mariadb (container adı)
+#   Port: 3306
+#   Docker DNS: "mariadb" → container IP'sine çevirir
+#
+# nginx'ten WordPress'e bağlanma:
+#   fastcgi_pass wordpress:9000;
+#   Docker DNS: "wordpress" → container IP'sine çevirir
+#
+# 🎯 İSİM ÇÖZÜMLEMESİ:
+# Docker, container_name'i otomatik DNS kaydı yapar:
+#   mariadb → 172.18.0.2
+#   wordpress → 172.18.0.3
+#   nginx → 172.18.0.4
+#
+# ⚠️ ÖNEMLİ:
+# Aynı network'te olmayan container'lar birbirini BULAMAZ!
+# Her servise "networks: - net" eklemek zorunlu.
+# ============================================================================
+networks:
+  # Network ismi: "net"
+  # name: net → Docker'da görünecek isim
+  # driver: bridge → Bridge network tipi
+  net:
+    name: net
+    driver: bridge
+
+# ============================================================================
+# SERVICES - SERVİSLER (CONTAINER'LAR)
+# ============================================================================
+#
+# 📌 SERVICE NEDİR?
+# Bir container tanımıdır. Her servis bir uygulama çalıştırır.
+#
+# 🤔 BU PROJEDEKİ SERVİSLER:
+# 1. mariadb: Veritabanı (MySQL uyumlu)
+# 2. wordpress: WordPress + PHP-FPM
+# 3. nginx: Web sunucu + HTTPS + Reverse Proxy
+#
+# ☕ GÜNLÜK HAYAT ÖRNEĞİ:
+# Restoran:
+# - mariadb = Depo (malzemeleri saklar)
+# - wordpress = Mutfak (yemekleri pişirir)
+# - nginx = Garson (müşteriye servis eder)
+#
+# 🔧 VERİ AKIŞI:
+# Kullanıcı (Browser)
+#    ↓ HTTPS (port 443)
+# Nginx (Web Server)
+#    ↓ FastCGI (port 9000)
+# WordPress (PHP-FPM)
+#    ↓ MySQL (port 3306)
+# MariaDB (Database)
+#
+# ============================================================================
+
+services:
+
+  # ==========================================================================
+  # MARİADB SERVİSİ - Veritabanı
+  # ==========================================================================
+  #
+  # 📌 MARİADB NEDİR?
+  # MySQL'in açık kaynak fork'u. WordPress için veritabanı.
+  # Tüm içerik burada: makaleler, yorumlar, ayarlar, kullanıcılar.
+  #
+  # 🤔 NEDEN MARİADB?
+  # - MySQL ile %100 uyumlu
+  # - Daha hızlı
+  # - Tamamen açık kaynak
+  # - Yaygın kullanılır
+  #
+  # ☕ GÜNLÜK HAYAT ÖRNEĞİ:
+  # Kütüphane:
+  # - Raflar = Tablolar
+  # - Kitaplar = Kayıtlar (rows)
+  # - Katalog sistemi = İndeksler
+  # - Kütüphaneci = MySQL daemon
+  #
+  # 🔧 ÇALIŞMA PRENSİBİ:
+  # 1. Container başlar
+  # 2. setup-mysql.sh çalışır
+  # 3. Veritabanı + kullanıcı oluşturulur
+  # 4. MariaDB daemon başlar
+  # 5. Port 3306'dan dinlemeye başlar
+  # 6. WordPress bağlanır ve tabloları oluşturur
+  #
+  # ==========================================================================
+  mariadb:
+    # ------------------------------------------------------------------------
+    # container_name: Container'a verilen isim
+    # ------------------------------------------------------------------------
+    # 📌 NE İŞE YARAR?
+    # Container'ın benzersiz ismi. docker ps'de göreceğin isim.
+    #
+    # 🤔 NEDEN ÖNEMLİ?
+    # - Network'te bu isimle erişilir: "mariadb:3306"
+    # - Log'larda bu isim görünür
+    # - docker exec -it mariadb bash (kolay hatırlanır)
+    #
+    # 💡 YAZMASAYDIN NE OLURDU?
+    # Docker otomatik isim verir: srcs_mariadb_1
+    # Karışık ve tahmin edilemez.
+    #
+    # ⚠️ DİKKAT:
+    # Aynı isimde 2 container olamaz!
+    # Conflict hatası alırsın.
+    # ------------------------------------------------------------------------
+    container_name: mariadb
+    
+    # ------------------------------------------------------------------------
+    # build: Image'ı nereden build edeceğiz?
+    # ------------------------------------------------------------------------
+    # 📌 NE İŞE YARAR?
+    # Dockerfile'ın bulunduğu klasörü belirtir.
+    # docker-compose build çalıştığında buraya bakar.
+    #
+    # 🤔 "build" vs "image" FARKI?
+    # build: ./requirements/mariadb → Dockerfile'dan image oluştur
+    # image: mysql:8.0 → Docker Hub'dan hazır image çek
+    #
+    # ☕ GÜNLÜK HAYAT ÖRNEĞİ:
+    # build = Evde yemek yap (kendin pişir)
+    # image = Restorandan sipariş et (hazır al)
+    #
+    # 🔧 TEKNİK DETAY:
+    # ./requirements/mariadb/ içinde:
+    #   - Dockerfile (ana tarif)
+    #   - conf/50-server.cnf (MariaDB ayarları)
+    #   - tools/setup-mysql.sh (kurulum scripti)
+    #
+    # 💡 BUILD CONTEXT:
+    # Docker, bu klasördeki tüm dosyaları görebilir.
+    # COPY komutu bu klasöre göre çalışır.
+    #
+    # ------------------------------------------------------------------------
+    build: ./requirements/mariadb
+    
+    # ------------------------------------------------------------------------
+    # env_file: Environment variable'ları dosyadan oku
+    # ------------------------------------------------------------------------
+    # 📌 NE İŞE YARAR?
+    # .env dosyasındaki değişkenleri container'a aktar.
+    #
+    # 🤔 İÇİNDE NE VAR?
+    # .env dosyası (örnek):
+    #   DOMAIN_NAME=egermen.42.fr
+    #   MYSQL_ROOT_PASSWORD=secret123
+    #
+    # 💡 "environment" vs "env_file" FARKI?
+    # env_file: .env → Dosyadan oku (tercih edilen)
+    # environment: → Direkt buraya yaz (şifre görünür, kötü)
+    #
+    # ⚠️ GÜVENLİK:
+    # Kritik bilgiler (şifre) için env_file yerine secrets kullan!
+    # Bu projede secrets kullanıyoruz.
+    # ------------------------------------------------------------------------
+    env_file:
+      - .env
+    
+    # ------------------------------------------------------------------------
+    # expose: Hangi portlar açık? (Container içi)
+    # ------------------------------------------------------------------------
+    # 📌 NE İŞE YARAR?
+    # Bu container'ın hangi portları kullandığını belirtir.
+    # Sadece DOKÜMANmak için! Teknik zorunluluk değil.
+    #
+    # 🤔 "expose" vs "ports" FARKI?
+    # expose: 3306 → Sadece container'lar arası (network içi)
+    # ports: "3306:3306" → Dış dünyaya aç (host:container)
+    #
+    # ☕ GÜNLÜK HAYAT ÖRNEĞİ:
+    # expose = İnterkom (sadece apartman içi)
+    # ports = Kapı zili (dışarıdan gelen çalabilir)
+    #
+    # 🔧 TEKNİK DETAY:
+    # Port 3306: MySQL/MariaDB default portu
+    # Sadece wordpress container'ı bağlanabilir (aynı network)
+    # Host'tan direkt erişemezsin (güvenlik)
+    #
+    # 💡 NEDEN DIŞ DÜNYAYA AÇMIYORUZ?
+    # Güvenlik! Sadece WordPress erişsin yeter.
+    # Dışarıdan direkt veritabanına bağlanma riski yok.
+    #
+    # 🔗 KİM KULLANIR?
+    # wordpress container:
+    #   DB_HOST=mariadb:3306
+    #   Docker network üzerinden bağlanır
+    # ------------------------------------------------------------------------
+    expose:
+      - 3306
+    
+    # ------------------------------------------------------------------------
+    # networks: Hangi network'lere bağlı?
+    # ------------------------------------------------------------------------
+    # 📌 NE İŞE YARAR?
+    # Container'ı "net" isimli network'e bağlar.
+    # Aynı network'teki container'larla haberleşebilir.
+    #
+    # 🤔 NEDEN GEREKLİ?
+    # wordpress container'ın mariadb'ye erişmesi için
+    # ikisi de aynı network'te olmalı!
+    #
+    # 💡 DNS ÇÖZÜMLEMESİ:
+    # Docker otomatik DNS: "mariadb" → container IP
+    # wordpress içinden: ping mariadb (çalışır!)
+    # ------------------------------------------------------------------------
+    networks:
+      - net
+    
+    # ------------------------------------------------------------------------
+    # volumes: Hangi klasörler bağlı?
+    # ------------------------------------------------------------------------
+    # 📌 NE İŞE YARAR?
+    # mariadb_volume'ü container'ın /var/lib/mysql'ine bağlar.
+    # Veritabanı dosyaları burada saklanır.
+    #
+    # 🤔 NEDEN VOLUME?
+    # Container sil → Veritabanı gitmesin!
+    # Volume kullan → Veriler kalıcı
+    #
+    # 🔧 MOUNT NOKTASI:
+    # /var/lib/mysql → MariaDB'nin default veri klasörü
+    # ${HOME}/data/mariadb ← → /var/lib/mysql
+    #     (Host)                    (Container)
+    #
+    # 💡 İÇİNDE NELER VAR?
+    # - mysql/ (sistem tabloları)
+    # - wordpress_db/ (WordPress veritabanı)
+    # - ib_logfile0, ib_logfile1 (InnoDB logları)
+    # - ibdata1 (InnoDB data file)
+    #
+    # ⚠️ YEDEKLEMEhome/user/data/mariadb'yi yedekle!
+    # ------------------------------------------------------------------------
+    volumes:
+      - mariadb_volume:/var/lib/mysql
+    
+    # ------------------------------------------------------------------------
+    # secrets: Hangi secret'lere erişir?
+    # ------------------------------------------------------------------------
+    # 📌 NE İŞE YARAR?
+    # Hassas bilgileri container'a güvenli şekilde aktarır.
+    #
+    # 🤔 NEREDE BULUNUR?
+    # Container içinde: /run/secrets/
+    #   - /run/secrets/db_password
+    #   - /run/secrets/db_root_password
+    #   - /run/secrets/credentials
+    #
+    # 🔧 KİM KULLANIR?
+    # setup-mysql.sh scripti bu dosyaları okur:
+    #   export MYSQL_ROOT_PASSWORD=$(cat /run/secrets/db_root_password)
+    #
+    # 💡 GÜVENLİK:
+    # tmpfs'te saklanır (RAM, disk değil)
+    # Container sil → Secret kaybolur
+    # Log'lara düşmez
+    # ------------------------------------------------------------------------
+    secrets:
+      - db_password
+      - db_root_password
+      - credentials
+    
+    # ------------------------------------------------------------------------
+    # restart: Container durduğunda ne yapsın?
+    # ------------------------------------------------------------------------
+    # 📌 NE İŞE YARAR?
+    # Container crash olursa otomatik yeniden başlat.
+    #
+    # 🤔 SEÇENEKLERrestart: no → Yeniden başlatma
+    # restart: always → Her zaman başlat
+    # restart: on-failure → Sadece hata olursa başlat
+    # restart: unless-stopped → Manuel stop edilmedikçe başlat
+    #
+    # ☕ GÜNLÜK HAYAT ÖRNEĞİ:
+    # Otomatik yeniden başlatma:
+    # - Elektrik gitti → Gelince bilgisayar otomatik açılır
+    # - Program crash oldu → Sistem tekrar başlatır
+    #
+    # 💡 NEDEN "always"?
+    # Production ortamı: Hata olsa bile kalk devam et!
+    # Veritabanı çok kritik, durmamalı.
+    #
+    # ⚠️ DİKKAT:
+    # Sonsuz döngü riski:
+    # - Container başlar → Crash olur → Başlar → Crash...
+    # - Sorunu çöz, sonra yeniden başlat
+    # ------------------------------------------------------------------------
+    restart: always
+
+  # ==========================================================================
+  # WORDPRESS SERVİSİ - PHP-FPM + WordPress
+  # ==========================================================================
+  #
+  # 📌 WORDPRESS NEDİR?
+  # En popüler CMS (İçerik Yönetim Sistemi).
+  # PHP ile yazılmış, veritabanında içerik saklar.
+  #
+  # 🤔 PHP-FPM NEDİR?
+  # PHP FastCGI Process Manager:
+  # - PHP kodlarını çalıştırır
+  # - Nginx ile haberleşir (FastCGI protokolü)
+  # - Her istek için ayrı process
+  #
+  # ☕ GÜNLÜK HAYAT ÖRNEĞİ:
+  # Restoran mutfağı:
+  # - Nginx (garson) = Sipariş alır
+  # - WordPress (aşçı) = Yemeği pişirir (PHP çalıştırır)
+  # - MariaDB (depo) = Malzemeleri sağlar
+  # - Garson, aşçıya sipariş iletir (FastCGI)
+  # - Aşçı hazırlar, garsona verir
+  # - Garson müşteriye servis eder
+  #
+  # 🔧 ÇALIŞMA PRENSİBİ:
+  # 1. Container başlar
+  # 2. wordpress-start.sh çalışır
+  # 3. WP-CLI ile WordPress indirilir
+  # 4. wp-config.php oluşturulur (DB bağlantısı)
+  # 5. WordPress kurulur (admin kullanıcı)
+  # 6. PHP-FPM daemon başlar
+  # 7. Port 9000'den dinlemeye başlar
+  # 8. Nginx'ten gelen istekleri işler
+  #
+  # ==========================================================================
+  wordpress:
+    # ------------------------------------------------------------------------
+    # container_name: wordpress
+    # ------------------------------------------------------------------------
+    # Nginx'in fastcgi_pass'inde bu isim kullanılır:
+    #   fastcgi_pass wordpress:9000;
+    # ------------------------------------------------------------------------
+    container_name: wordpress
+    
+    # ------------------------------------------------------------------------
+    # build: ./requirements/wordpress
+    # ------------------------------------------------------------------------
+    # İçinde:
+    #   - Dockerfile (PHP-FPM + WP-CLI kurulumu)
+    #   - conf/www.conf (PHP-FPM pool ayarları)
+    #   - tools/wordpress-start.sh (WordPress kurulum scripti)
+    # ------------------------------------------------------------------------
+    build: ./requirements/wordpress
+    
+    # ------------------------------------------------------------------------
+    # env_file: .env
+    # ------------------------------------------------------------------------
+    # DOMAIN_NAME gibi değişkenler wordpress-start.sh tarafından kullanılır.
+    # ------------------------------------------------------------------------
+    env_file:
+      - .env
+    
+    # ------------------------------------------------------------------------
+    # expose: 9000 (PHP-FPM default portu)
+    # ------------------------------------------------------------------------
+    # 📌 NE İŞE YARAR?
+    # PHP-FPM bu porttan dinler.
+    # Nginx bu porta FastCGI istekleri gönderir.
+    #
+    # 🤔 NEDEN 9000?
+    # PHP-FPM'in standart portu.
+    # www.conf'ta tanımlı: listen = 0.0.0.0:9000
+    #
+    # ☕ GÜNLÜK HAYAT ÖRNEĞİ:
+    # Mutfağın servisi arayan telefon numarası.
+    # Garson (Nginx) bu numarayı arar (port 9000).
+    #
+    # 🔗 KİM KULLANIR?
+    # nginx.conf:
+    #   location ~ \.php$ {
+    #       fastcgi_pass wordpress:9000;
+    #   }
+    # .php uzantılı dosyalar WordPress'e yönlendirilir.
+    #
+    # 💡 DIŞ DÜNYAYA AÇIK MI?
+    # Hayır! Sadece container'lar arası (expose, ports değil).
+    # Host'tan direkt erişemezsin (güvenlik).
+    # ------------------------------------------------------------------------
+    expose:
+      - 9000
+    
+    # ------------------------------------------------------------------------
+    # networks: - net
+    # ------------------------------------------------------------------------
+    # mariadb ve nginx ile aynı network'te.
+    # mariadb:3306'ya bağlanabilir.
+    # nginx'ten gelen FastCGI isteklerini alabilir.
+    # ------------------------------------------------------------------------
+    networks:
+      - net
+    
+    # ------------------------------------------------------------------------
+    # volumes: wordpress_volume:/var/www/html
+    # ------------------------------------------------------------------------
+    # 📌 NE İŞE YARAR?
+    # WordPress dosyalarını saklar ve Nginx ile paylaşır.
+    #
+    # 🤔 NEDEN NGİNX İLE PAYLAŞIYORUZ?
+    # Nginx static dosyaları (CSS, JS, resim) direkt serve eder.
+    # PHP dosyalarını WordPress'e yönlendirir.
+    # İkisi de aynı dosyalara erişmeli!
+    #
+    # 🔧 MOUNT NOKTASI:
+    # /var/www/html → WordPress'in default klasörü
+    # ${HOME}/data/wordpress ← → /var/www/html
+    #      (Host)                      (Container)
+    #
+    # 💡 İÇİNDE NELER VAR?
+    # - index.php (WordPress ana dosyası)
+    # - wp-config.php (veritabanı ayarları)
+    # - wp-content/ (temalar, eklentiler, uploads)
+    # - wp-admin/ (yönetim paneli)
+    # - wp-includes/ (core dosyalar)
+    #
+    # 🔗 wordpress-start.sh BU KLASÖRE KURAR:
+    # wp-cli core download --allow-root
+    # → WordPress dosyaları /var/www/html'e indirilir
+    # ------------------------------------------------------------------------
+    volumes:
+      - wordpress_volume:/var/www/html
+    
+    # ------------------------------------------------------------------------
+    # depends_on: - mariadb
+    # ------------------------------------------------------------------------
+    # 📌 NE İŞE YAPAR?
+    # WordPress, MariaDB'den SONRA başlar.
+    #
+    # 🤔 NEDEN GEREKLİ?
+    # WordPress veritabanına bağlanmaya çalışır.
+    # Veritabanı hazır değilse bağlantı hatası!
+    #
+    # ☕ GÜNLÜK HAYAT ÖRNEĞİ:
+    # Aşçı (WordPress) mutfağa gelmeden önce
+    # depo (MariaDB) hazır olmalı.
+    # Yoksa malzeme bulamaz!
+    #
+    # ⚠️ ÖNEMLİ UYARI:
+    # depends_on SADECE başlatma sırasını belirler!
+    # MariaDB'nin HAZIR olduğunu garanti etmez.
+    #
+    # Örnek:
+    # 1. mariadb container başlar (ama DB henüz hazır değil)
+    # 2. wordpress container başlar
+    # 3. wordpress bağlanmaya çalışır → HATA!
+    #
+    # ÇÖZÜM:
+    # wordpress-start.sh içinde retry mekanizması var:
+    #   until wp-cli ... ; do sleep 2; done
+    # Hazır olana kadar bekler.
+    #
+    # 💡 HEALTHCHECK ALTERNATİFİ:
+    # depends_on:
+    #   mariadb:
+    #     condition: service_healthy
+    # Bu için mariadb'de healthcheck tanımlanmalı.
+    # ------------------------------------------------------------------------
+    depends_on:
+      - mariadb
+    
+    # ------------------------------------------------------------------------
+    # secrets: credentials, db_password
+    # ------------------------------------------------------------------------
+    # wordpress-start.sh bu dosyaları okur:
+    # - credentials: WP_ADMIN_LOGIN, WP_ADMIN_PASSWORD, MYSQL_USER vs.
+    # - db_password: Veritabanı şifresi
+    #
+    # wp-config.php oluşturulurken kullanılır:
+    #   wp-cli config create --dbpass=$MYSQL_PASSWORD
+    # ------------------------------------------------------------------------
+    secrets:
+      - credentials
+      - db_password
+    
+    # ------------------------------------------------------------------------
+    # restart: always
+    # ------------------------------------------------------------------------
+    # WordPress crash olursa otomatik yeniden başlat.
+    # Sitenin çalışmaya devam etmesi kritik!
+    # ------------------------------------------------------------------------
+    restart: always
+
+  # ==========================================================================
+  # NGINX SERVİSİ - Web Sunucu + Reverse Proxy + HTTPS
+  # ==========================================================================
+  #
+  # 📌 NGİNX NEDİR?
+  # Yüksek performanslı web sunucu ve reverse proxy.
+  # Static dosyaları serve eder, PHP isteklerini WordPress'e yönlendirir.
+  #
+  # 🤔 NEDEN APACHE DEĞİL?
+  # Nginx vs Apache:
+  # - Nginx: Çok hızlı, az kaynak kullanır, async
+  # - Apache: Daha eski, fazla modül, sync
+  # Modern projeler Nginx tercih eder.
+  #
+  # ☕ GÜNLÜK HAYAT ÖRNEĞİ:
+  # Restoranın garson şefi:
+  # - Müşteri gelir (browser → HTTPS isteği)
+  # - Garson şefi karşılar (Nginx)
+  # - Basit istek mi? (CSS, JS, resim) → Direkt servis et
+  # - Karmaşık istek mi? (PHP) → Mutfağa ilet (WordPress)
+  # - Mutfak hazırlar → Garson şefi müşteriye getirir
+  #
+  # 🔧 ÇALIŞMA PRENSİBİ:
+  # 1. Container başlar
+  # 2. nginx_start.sh çalışır (minimal script)
+  # 3. Nginx daemon başlar
+  # 4. Port 443 (HTTPS) dinlemeye başlar
+  # 5. SSL/TLS ile şifreli bağlantı kurar
+  #
+  # İSTEK İŞLEME:
+  # Browser → https://egermen.42.fr/index.php
+  #   ↓ Port 443
+  # Nginx:
+  #   - .php uzantılı mı? → WordPress'e yönlendir (FastCGI)
+  #   - Static dosya mı? (.css, .js, .jpg) → Direkt serve et
+  #   ↓ FastCGI (port 9000)
+  # WordPress:
+  #   - PHP kodunu çalıştırır
+  #   - MariaDB'den veri çeker
+  #   - HTML oluşturur
+  #   ↓ Response
+  # Nginx:
+  #   - Response'u alır
+  #   - SSL ile şifreler
+  #   - Browser'a gönderir
+  #
+  # ==========================================================================
+  nginx:
+    # ------------------------------------------------------------------------
+    # container_name: nginx
+    # ------------------------------------------------------------------------
+    # Host'tan erişim: https://localhost:443 veya https://egermen.42.fr
+    # ------------------------------------------------------------------------
+    container_name: nginx
+    
+    # ------------------------------------------------------------------------
+    # build: ./requirements/nginx
+    # ------------------------------------------------------------------------
+    # İçinde:
+    #   - Dockerfile (Nginx + OpenSSL kurulumu + SSL sertifikası)
+    #   - conf/nginx.conf (Nginx yapılandırması)
+    #   - tools/nginx_start.sh (Basit başlatma scripti)
+    # ------------------------------------------------------------------------
+    build: ./requirements/nginx
+    
+    # ------------------------------------------------------------------------
+    # expose: 443 (HTTPS default portu)
+    # ------------------------------------------------------------------------
+    # 📌 NE İŞE YARAR?
+    # HTTPS trafiği için standart port.
+    # SSL/TLS ile şifreli bağlantı.
+    #
+    # 🤔 NEDEN 443?
+    # HTTP: Port 80 (şifresiz, tehlikeli)
+    # HTTPS: Port 443 (SSL ile şifreli, güvenli)
+    # Modern web standartı: Sadece HTTPS kullan!
+    #
+    # ☕ GÜNLÜK HAYAT ÖRNEĞİ:
+    # Postacı:
+    # - Port 80 = Açık kartpostal (herkes okuyabilir)
+    # - Port 443 = Kapalı zarf + mühür (sadece alıcı okur)
+    #
+    # 🔧 SSL/TLS:
+    # Dockerfile'da self-signed certificate oluşturulur:
+    #   openssl req -x509 -nodes -days 365 ...
+    # nginx.conf'ta kullanılır:
+    #   ssl_certificate /etc/ssl/certs/nginx-selfsigned.crt;
+    #   ssl_certificate_key /etc/ssl/private/nginx-selfsigned.key;
+    #
+    # ⚠️ SELF-SIGNED vs REAL CERTIFICATE:
+    # Self-signed:
+    #   - Browser uyarı verir ("güvenli değil")
+    #   - Test/development için uygun
+    #   - Ücretsiz
+    # Real certificate (Let's Encrypt):
+    #   - Browser kabul eder
+    #   - Production için gerekli
+    #   - Otomatik yenileme gerekir
+    # ------------------------------------------------------------------------
+    expose:
+      - 443
+    
+    # ------------------------------------------------------------------------
+    # networks: - net
+    # ------------------------------------------------------------------------
+    # wordpress ile aynı network'te.
+    # fastcgi_pass wordpress:9000 → Bağlanabilir.
+    # ------------------------------------------------------------------------
+    networks:
+      - net
+    
+    # ------------------------------------------------------------------------
+    # ports: "443:443"
+    # ------------------------------------------------------------------------
+    # 📌 NE İŞE YARAR?
+    # Container'ın 443 portunu host'un 443 portuna bağlar.
+    # Dış dünyadan erişim sağlar!
+    #
+    # 🤔 "expose" vs "ports" FARKI?
+    # expose: 443 → Sadece container'lar arası (DOKÜMANtatif)
+    # ports: "443:443" → Dış dünyaya aç (ZORUNLU)
+    #
+    # Format: "HOST_PORT:CONTAINER_PORT"
+    # "443:443" → Host 443 → Container 443
+    # "8080:443" → Host 8080 → Container 443
+    #
+    # ☕ GÜNLÜK HAYAT ÖRNEĞİ:
+    # expose = İnterkom (sadece apartman içi)
+    # ports = Ana kapı (sokaktan gelebilir)
+    #
+    # 🔧 BU PROJEDE:
+    # Browser → https://egermen.42.fr:443
+    #    ↓
+    # Host Port 443
+    #    ↓
+    # Container Port 443 (Nginx)
+    #
+    # 💡 SADECE NGİNX'TE ports VAR:
+    # mariadb: expose 3306 (sadece internal)
+    # wordpress: expose 9000 (sadece internal)
+    # nginx: ports 443 (dış dünyaya açık)
+    #
+    # Dış dünya → Nginx → WordPress → MariaDB
+    # Sadece Nginx dışarıyla konuşur!
+    # ------------------------------------------------------------------------
+    ports:
+      - "443:443"
+    
+    # ------------------------------------------------------------------------
+    # volumes: wordpress_volume:/var/www/html
+    # ------------------------------------------------------------------------
+    # 📌 NEDEN NGİNX WORDPRESS VOLUME'ÜNÜ KULLANIR?
+    # Static dosyaları (CSS, JS, resim) direkt serve etmek için.
+    #
+    # 🤔 NASIL ÇALIŞIR?
+    # İstek: https://egermen.42.fr/wp-content/uploads/2024/photo.jpg
+    #
+    # Nginx:
+    #   1. nginx.conf: root /var/www/html;
+    #   2. Dosya yolu: /var/www/html/wp-content/uploads/2024/photo.jpg
+    #   3. Volume sayesinde dosyayı bulur
+    #   4. Direkt browser'a gönderir (WordPress'e sormaz)
+    #
+    # WordPress'i meşgul etmez → Hızlı!
+    #
+    # 🔧 SHARED VOLUME:
+    # wordpress container: /var/www/html (READ + WRITE)
+    #   - WordPress dosyaları yükler
+    #   - wp-content/uploads/ klasörüne resim kayeder
+    #
+    # nginx container: /var/www/html (READ-ONLY yeterli)
+    #   - Static dosyaları okur
+    #   - Browser'a serve eder
+    #
+    # İkisi de aynı volume → Aynı dosyalar!
+    #
+    # 💡 LOCATION BLOCKS:
+    # nginx.conf'ta:
+    #   location ~ \.php$ {
+    #       fastcgi_pass wordpress:9000;  # PHP → WordPress
+    #   }
+    #   location / {
+    #       try_files $uri $uri/ ...;     # Static → Nginx
+    #   }
+    # ------------------------------------------------------------------------
+    volumes:
+      - wordpress_volume:/var/www/html
+    
+    # ------------------------------------------------------------------------
+    # depends_on: - mariadb, - wordpress
+    # ------------------------------------------------------------------------
+    # 📌 NE İŞE YARAR?
+    # Nginx en son başlar.
+    # MariaDB ve WordPress hazır olmalı.
+    #
+    # 🤔 NEDEN HER İKİSİNE DE BAĞIMLI?
+    # - WordPress'e FastCGI istekleri gönderir
+    # - WordPress MariaDB'ye bağlı
+    # - Hepsi hazır olmazsa 502 Bad Gateway hatası
+    #
+    # ☕ GÜNLÜK HAYAT ÖRNEĞİ:
+    # Restoran açılış sırası:
+    # 1. Depo hazırla (mariadb)
+    # 2. Mutfağı aç (wordpress)
+    # 3. Garsonları yerleştir (nginx)
+    # 4. Kapıları aç (müşteri kabul et)
+    #
+    # 🔧 BAŞLATMA SIRASI:
+    # docker-compose up:
+    #   1. mariadb başlar
+    #   2. wordpress başlar (mariadb'ye depends)
+    #   3. nginx başlar (ikisine de depends)
+    #
+    # ⚠️ HATIRLATMA:
+    # depends_on başlatma sırası, HAZIR olma garantisi değil!
+    # wordpress-start.sh içindeki retry mekanizması önemli.
+    # ------------------------------------------------------------------------
+    depends_on:
+      - mariadb
+      - wordpress
+    
+    # ------------------------------------------------------------------------
+    # secrets: credentials
+    # ------------------------------------------------------------------------
+    # nginx_start.sh minimal olduğu için pek kullanmıyor.
+    # Gelecekte ihtiyaç olursa (admin panel şifresi vs.) burada.
+    # ------------------------------------------------------------------------
+    secrets:
+      - credentials
+    
+    # ------------------------------------------------------------------------
+    # restart: always
+    # ------------------------------------------------------------------------
+    # Nginx crash olursa otomatik yeniden başlat.
+    # Site erişilebilir kalmalı!
+    # ------------------------------------------------------------------------
+    restart: always
+
+# ============================================================================
+# ÖZET - DOCKER-COMPOSE.YML'DEN ÖĞRENDİKLERİMİZ
+# ============================================================================
+#
+# 1. SECRETS: Şifreleri güvenli sakla (/run/secrets/)
+# 2. VOLUMES: Verileri kalıcı yap (bind mount ile ${HOME}/data)
+# 3. NETWORKS: Container'ları bağla (bridge network)
+# 4. SERVICES: 3 container tanımla (mariadb, wordpress, nginx)
+# 5. BUILD: Her servis için Dockerfile'dan image oluştur
+# 6. EXPOSE: Internal portları belirt (3306, 9000, 443)
+# 7. PORTS: Sadece Nginx'i dış dünyaya aç (443:443)
+# 8. DEPENDS_ON: Başlatma sırasını belirle
+# 9. RESTART: Otomatik yeniden başlatma (always)
+# 10. SHARED VOLUMES: Nginx ve WordPress aynı dosyalara erişir
+#
+# VERİ AKIŞI:
+# Browser → Nginx (443) → WordPress (9000) → MariaDB (3306)
+#
+# BAŞLATMA:
+# make → docker-compose up → 3 container başlar → Site hazır!
+#
+# ============================================================================

@@ -1,0 +1,593 @@
+# ============================================================================
+# MARİADB YAPILANDIRMA DOSYASI - 50-server.cnf
+# ============================================================================
+#
+# 📌 BU DOSYA NE İŞE YARAR?
+# MariaDB sunucusunun çalışma ayarlarını belirler.
+# Container başladığında bu ayarlar otomatik yüklenir.
+#
+# 🤔 .cnf DOSYASI NEDİR?
+# Configuration (yapılandırma) dosyası.
+# INI formatında: [section] başlıkları ve key=value çiftleri.
+# MariaDB/MySQL bu formatı kullanır.
+#
+# ☕ GÜNLÜK HAYAT ÖRNEĞİ:
+# Dükkân açılış kuralları:
+# - Kaç saat açık?
+# - Kimler girebilir?
+# - Hangi dilde konuşulur?
+# - Nerede saklanır veriler?
+#
+# 🔧 DOSYA YERLEŞİMİ:
+# Container içinde: /etc/mysql/mariadb.conf.d/50-server.cnf
+# Dockerfile ile kopyalanır: COPY ./conf/50-server.cnf /etc/mysql/mariadb.conf.d/
+#
+# 💡 NEDEN 50-server.cnf?
+# /etc/mysql/mariadb.conf.d/ içindeki tüm .cnf dosyaları alfabetik sırayla okunur:
+#   - 10-*.cnf (düşük öncelik)
+#   - 20-*.cnf
+#   - 50-server.cnf ← Bizimki (orta öncelik)
+#   - 60-*.cnf
+#   - 99-*.cnf (yüksek öncelik)
+# 50 = Standart ayarlar, gerekirse sonrakiler override eder
+#
+# ============================================================================
+
+# ============================================================================
+# SECTION: [mysqld]
+# ============================================================================
+#
+# 📌 [mysqld] NEDİR?
+# MariaDB daemon'ının (sunucu) ayarlarını içerir.
+# Sadece sunucu bu bölümü okur (istemci okumaz).
+#
+# 🤔 DİĞER SECTİONlar?
+# [client]: mysql komut satırı aracı
+# [mysqldump]: Yedekleme aracı
+# [mysql]: İstemci
+# [mysqld]: Sunucu ← Bizim kullandığımız
+#
+# ☕ GÜNLÜK HAYAT ÖRNEĞİ:
+# Restoran kuralları kitabı:
+# - [müşteri]: Müşteri kuralları
+# - [garson]: Garson kuralları
+# - [aşçı]: Mutfak kuralları ← [mysqld] gibi
+#
+# ============================================================================
+[mysqld]
+
+# ============================================================================
+# AYAR: user = mysql
+# ============================================================================
+#
+# 📌 NE İŞE YARAR?
+# MariaDB daemon hangi kullanıcı olarak çalışacak?
+#
+# 🤔 NEDEN "mysql" KULLANICISI?
+# Güvenlik! Root olarak çalıştırma!
+#
+# root olarak çalışırsa:
+#   - SQL injection ile sistem hacklenebilir
+#   - Tüm dosyalara erişim vardır
+#   - Sistem komutları çalıştırılabilir
+#
+# mysql kullanıcısı olarak:
+#   - Sadece /var/lib/mysql klasörü erişimi
+#   - Sistem dosyalarına dokunamaz
+#   - Sınırlı yetkiler = Güvenli
+#
+# ☕ GÜNLÜK HAYAT ÖRNEĞİ:
+# Şirkette çalışan:
+# - CEO (root) = Her şeye erişim (tehlikeli)
+# - Muhasebeci (mysql) = Sadece muhasebe dosyaları (güvenli)
+#
+# 🔧 TEKNİK DETAY:
+# Linux'ta "mysql" kullanıcısı mariadb-server paketi ile oluşturulur.
+# UID/GID genelde 999 veya benzeri.
+# /var/lib/mysql klasörünün sahibi mysql:mysql
+#
+# 🔗 DİĞER DOSYALARLA İLİŞKİ:
+# Dockerfile: RUN chown -R mysql:mysql /var/lib/mysql
+# CMD: mariadbd --user=mysql (aynı kullanıcı)
+#
+# ⚠️ ÖNEMLİ:
+# Production'da MUTLAKA mysql kullanıcısı kullan!
+# root ile çalıştırma, ciddi güvenlik riski!
+# ============================================================================
+user                    = mysql
+
+# ============================================================================
+# AYAR: pid-file = /run/mysqld/mysqld.pid
+# ============================================================================
+#
+# 📌 NE İŞE YARAR?
+# Process ID (PID) dosyasının yeri.
+# MariaDB başladığında process ID'sini bu dosyaya yazar.
+#
+# 🤔 PID DOSYASI NEDEN GEREKLİ?
+# - Hangi process çalışıyor? (PID numarası)
+# - Aynı anda 2 MariaDB başlamasın! (PID dosyası varsa zaten çalışıyor)
+# - Yönetim scriptleri PID'yi okur (restart, stop için)
+#
+# ☕ GÜNLÜK HAYAT ÖRNEĞİ:
+# Dükkân kapısına asılan "AÇIK" tabelası:
+# - Tabela var mı? Evet → Dükkan açık
+# - Tabela yok mu? → Dükkan kapalı
+# - İki dükkân aynı tabelayı kullanamaz
+#
+# 🔧 TEKNİK DETAY:
+# İçeriği: Sadece bir sayı (örnek: 42)
+# 42 = MariaDB process'inin ID'si
+# kill 42 → Process'i durdur
+# kill -9 42 → Zorla durdur
+#
+# 💡 BAŞKA NE İŞE YARAR?
+# Monitoring: Process hala çalışıyor mu?
+#   if [ -f /run/mysqld/mysqld.pid ]; then
+#       echo "MariaDB çalışıyor"
+#   fi
+#
+# ⚠️ /run/ KLASÖRÜ:
+# tmpfs (RAM disk), yeniden başlatmada silinir.
+# PID dosyası geçici olmalı (persistent olmasın).
+# ============================================================================
+pid-file                = /run/mysqld/mysqld.pid
+
+# ============================================================================
+# AYAR: socket = /run/mysqld/mysqld.sock
+# ============================================================================
+#
+# 📌 NE İŞE YARAR?
+# Unix socket dosyasının yeri.
+# Lokal bağlantılar (aynı makine) için TCP yerine socket kullanır.
+#
+# 🤔 SOCKET vs TCP/IP?
+#
+# Socket (Unix Domain Socket):
+#   - Aynı makinede hızlı iletişim
+#   - Dosya sistemi üzerinden
+#   - Network gerekm Network stack'i kullanmaz
+#   - Çok hızlı!
+#
+# TCP/IP:
+#   - Network üzerinden (farklı makineler)
+#   - IP:Port kullanır
+#   - Daha yavaş (network overhead)
+#
+# Container ortamında:
+#   - WordPress farklı container → TCP/IP (mariadb:3306)
+#   - Aynı container içinde → Socket (daha hızlı)
+#
+# ☕ GÜNLÜK HAYAT ÖRNEĞİ:
+# İletişim yöntemleri:
+# - Socket = İnterkom (apartman içi, hızlı)
+# - TCP/IP = Telefon (şehir dışı, biraz yavaş)
+#
+# 🔧 TEKNİK DETAY:
+# Socket dosyası özel dosya türü (s tipi):
+#   ls -l /run/mysqld/mysqld.sock
+#   srwxrwxrwx 1 mysql mysql 0 ... /run/mysqld/mysqld.sock
+#
+# İki süreç bunu okuyup yazarak haberleşir.
+# Fiziksel veri yok, sadece iletişim kanalı.
+#
+# 💡 KULLANIM:
+# mysql -u root -p
+#   → Otomatik socket kullanır (hızlı)
+#
+# mysql -h mariadb -u root -p
+#   → TCP/IP kullanır (network)
+#
+# ⚠️ /run/ KLASÖRÜ:
+# tmpfs, yeniden başlatmada silinir.
+# Socket dosyası geçici olmalı.
+# ============================================================================
+socket                  = /run/mysqld/mysqld.sock
+
+# ============================================================================
+# AYAR: port = 3306
+# ============================================================================
+#
+# 📌 NE İŞE YARAR?
+# MariaDB hangi TCP portunda dinleyecek?
+#
+# 🤔 NEDEN 3306?
+# MySQL/MariaDB'nin standart portu.
+# Tüm dünya 3306 kullanır, değiştirmemelisin.
+#
+# Diğer standart portlar:
+#   - HTTP: 80
+#   - HTTPS: 443
+#   - SSH: 22
+#   - PostgreSQL: 5432
+#   - MySQL/MariaDB: 3306 ← Bizim
+#
+# ☕ GÜNLÜK HAYAT ÖRNEĞİ:
+# Apartman dairesi numarası:
+# - 3306 numaralı daire = Veritabanı
+# - Ziyaretçi (WordPress) bu numaraya gelir
+# - Yanlış numara = Bağlantı hatası!
+#
+# 🔧 TEKNİK DETAY:
+# Port aralıkları:
+#   - 0-1023: Well-known ports (root gerektirir)
+#   - 1024-49151: Registered ports ← 3306 burada
+#   - 49152-65535: Dynamic ports
+#
+# 3306 > 1024 olduğu için root gerekmez.
+# mysql kullanıcısı açabilir.
+#
+# 🔗 DİĞER DOSYALARLA İLİŞKİ:
+# docker-compose.yml:
+#   expose:
+#     - 3306 ← Bu port
+#
+# wordpress container:
+#   DB_HOST=mariadb:3306 ← Bu port
+#
+# 💡 DEĞİŞTİREBİLİR MİSİN?
+# Evet ama önerilmez:
+#   port = 3307
+# Sonra her yerde güncellemen gerekir:
+#   - docker-compose.yml: expose: - 3307
+#   - WordPress: DB_HOST=mariadb:3307
+# Karışıklık yaratır, standart kullan!
+#
+# ⚠️ GÜVENLİK:
+# docker-compose.yml'de "expose" kullanıyoruz, "ports" değil.
+# → Sadece container'lar erişir, dış dünya erişemez!
+# Güvenlik için iyi.
+# ============================================================================
+port                    = 3306
+
+# ============================================================================
+# AYAR: basedir = /usr
+# ============================================================================
+#
+# 📌 NE İŞE YARAR?
+# MariaDB'nin kurulu olduğu ana klasör.
+# Programlar, kütüphaneler burada.
+#
+# 🤔 İÇİNDE NELER VAR?
+# /usr/bin/ → mariadbd, mysql, mysqladmin komutları
+# /usr/lib/ → Kütüphane dosyaları
+# /usr/share/mysql/ → SQL dosyaları, karakter setleri
+#
+# ☕ GÜNLÜK HAYAT ÖRNEĞİ:
+# Program dosyalarının kurulu olduğu klasör.
+# Windows'ta "C:\Program Files" gibi.
+#
+# 🔧 STANDART LINUX YAPISI:
+# /usr/bin/ → Çalıştırılabilir dosyalar
+# /usr/lib/ → Kütüphaneler
+# /usr/share/ → Paylaşılan dosyalar
+# /usr/local/ → Manuel kurulumlar
+#
+# 💡 NEDEN DEĞİŞTİRMELİSİN?
+# Özel kurulum yaptıysan:
+#   basedir = /opt/mariadb
+# Bizim durumumuzda apt-get ile kurduk:
+#   → Otomatik /usr/ kullanır
+# ============================================================================
+basedir                 = /usr
+
+# ============================================================================
+# AYAR: datadir = /var/lib/mysql
+# ============================================================================
+#
+# 📌 NE İŞE YARAR?
+# Veritabanı dosyalarının saklandığı klasör.
+# Tüm tablolar, indexler, loglar burada.
+#
+# 🤔 İÇİNDE NELER VAR?
+# /var/lib/mysql/mysql/ → Sistem tabloları (kullanıcılar, yetkiler)
+# /var/lib/mysql/wordpress_db/ → WordPress veritabanı
+# /var/lib/mysql/ib_logfile0 → InnoDB transaction logları
+# /var/lib/mysql/ibdata1 → InnoDB data dosyası
+# /var/lib/mysql/aria_log.* → Aria storage engine logları
+#
+# ☕ GÜNLÜK HAYAT ÖRNEĞİ:
+# Arşiv odası:
+# - basedir = Ofis binası (/usr)
+# - datadir = Arşiv odası (/var/lib/mysql)
+# Binayı değiştirebilirsin ama arşiv hep aynı yerde.
+#
+# 🔧 TEKNİK DETAY:
+# /var/lib/ → Değişken veri (variable data)
+# Uygulama çalışırken sürekli değişir.
+#
+# /var/log/ → Log dosyaları
+# /var/tmp/ → Geçici dosyalar
+# /var/lib/mysql/ → MariaDB verileri
+#
+# 🔗 DİĞER DOSYALARLA İLİŞKİ:
+# docker-compose.yml:
+#   volumes:
+#     - mariadb_volume:/var/lib/mysql ← Bu klasör
+#
+# Volume mount:
+#   ${HOME}/data/mariadb ← → /var/lib/mysql
+#   (Host)                    (Container)
+#
+# Container silinse bile ${HOME}/data/mariadb kalır!
+# Veriler kaybolmaz.
+#
+# ⚠️ ÇOK ÖNEMLİ:
+# Bu klasörü YEDEKLE!
+# Burada tüm verileriniz var.
+# Silersen her şey gider!
+#
+# Yedekleme:
+#   tar -czf backup.tar.gz /var/lib/mysql
+# veya
+#   mysqldump --all-databases > backup.sql
+# ============================================================================
+datadir                 = /var/lib/mysql
+
+# ============================================================================
+# AYAR: tmpdir = /tmp
+# ============================================================================
+#
+# 📌 NE İŞE YARAR?
+# Geçici dosyaların saklandığı klasör.
+# Sıralama, geçici tablolar, query cache burada.
+#
+# 🤔 NE ZAMAN KULLANILIR?
+# - ORDER BY ile büyük sıralama → Geçici dosya
+# - JOIN işlemleri → Geçici tablo
+# - UNION, DISTINCT → Geçici sonuçlar
+#
+# ☕ GÜNLÜK HAYAT ÖRNEĞİ:
+# Mutfakta çalışma tezgahı:
+# - Malzemeleri burada hazırlarsın (geçici)
+# - İş bitince temizlersin
+# - Kalıcı değil, anlık kullanım
+#
+# 🔧 TEKNİK DETAY:
+# /tmp klasörü:
+#   - Sistem yeniden başlayınca silinebilir
+#   - tmpfs mount olabilir (RAM disk, hızlı)
+#   - Geçici dosyalar için ideal
+#
+# Büyük query'ler:
+#   - RAM yetmezse /tmp'ye yazar
+#   - I/O artar (disk erişimi)
+#   - Yavaşlama olabilir
+#
+# 💡 OPTİMİZASYON:
+# Çok büyük geçici dosyalar bekliyorsan:
+#   tmpdir = /var/tmp  # Daha büyük alan
+# veya
+#   tmpdir = /ssd/tmp  # SSD kullan (hızlı)
+#
+# Container'da:
+#   tmpdir = /tmp (yeterli genelde)
+# ============================================================================
+tmpdir                  = /tmp
+
+# ============================================================================
+# AYAR: bind-address = 0.0.0.0
+# ============================================================================
+#
+# 📌 BU EN ÖNEMLİ AYAR!
+# MariaDB hangi IP adreslerinden bağlantı kabul eder?
+#
+# 🤔 0.0.0.0 NE DEMEK?
+# TÜM IP adreslerinden bağlantı kabul et!
+#
+# Alternatifler:
+#   bind-address = 127.0.0.1 → Sadece localhost (aynı makine)
+#   bind-address = 0.0.0.0 → Tüm IP'ler (network'ten de gelebilir)
+#   bind-address = 192.168.1.10 → Sadece bu IP
+#
+# ☕ GÜNLÜK HAYAT ÖRNEĞİ:
+# Dükkân girişi:
+#   - 127.0.0.1 = Sadece ev sakinleri girebilir
+#   - 0.0.0.0 = Herkese açık, herkes girebilir
+#
+# 🔧 CONTAINER ORTAMINDA:
+# wordpress container → mariadb container bağlanacak.
+# Farklı container'lar = Farklı IP'ler!
+#
+# 127.0.0.1 kullansaydık:
+#   ❌ wordpress → mariadb bağlanamaz!
+#   Çünkü 127.0.0.1 = sadece kendi container'ı
+#
+# 0.0.0.0 kullanıyoruz:
+#   ✅ wordpress → mariadb bağlanabilir!
+#   Network üzerinden erişim mümkün
+#
+# 🔗 DİĞER DOSYALARLA İLİŞKİ:
+# wordpress-start.sh:
+#   wp-cli config create --dbhost=mariadb
+#
+# Docker network DNS:
+#   mariadb → 172.18.0.2 (örnek IP)
+#
+# MariaDB:
+#   bind-address = 0.0.0.0 → 172.18.0.2'den dinle
+#   wordpress (172.18.0.3) bağlanabilir!
+#
+# 💡 GÜVENLİK:
+# "0.0.0.0 tehlikeli değil mi?"
+#
+# Hayır, çünkü:
+#   1. docker-compose.yml: expose (ports değil!)
+#   2. Sadece "net" network'ündeki container'lar erişir
+#   3. Dış dünyadan erişim YOK!
+#
+# Eğer güvenlik kaygın varsa:
+#   - Firewall kuralları ekle
+#   - Güçlü şifreler kullan
+#   - SSL/TLS bağlantı zorunlu kıl
+#
+# ⚠️ DEFAULT AYAR:
+# Çoğu MariaDB kurulumu:
+#   bind-address = 127.0.0.1 (sadece localhost)
+# Container ortamında ÇALIŞMAZ!
+# Mutlaka 0.0.0.0 olmalı!
+# ============================================================================
+bind-address            = 0.0.0.0
+
+# ============================================================================
+# AYAR: character-set-server = utf8mb4
+# ============================================================================
+#
+# 📌 NE İŞE YARAR?
+# Veritabanının varsayılan karakter seti.
+# Hangi karakterleri saklayabiliriz?
+#
+# 🤔 utf8mb4 NEDİR?
+# UTF-8 Multi-Byte 4:
+#   - UTF-8'in tam sürümü
+#   - 1-4 byte karakterler
+#   - Emoji desteği! 🎉🎨
+#   - Türkçe, Arapça, Çince, Japonca, vs.
+#
+# utf8 vs utf8mb4:
+#   utf8 (eski): 1-3 byte, emoji yok ❌
+#   utf8mb4 (yeni): 1-4 byte, emoji var ✅
+#
+# ☕ GÜNLÜK HAYAT ÖRNEĞİ:
+# Alfabe:
+#   - ascii = Sadece İngilizce (A-Z)
+#   - utf8 = Çoğu dil ama emoji yok
+#   - utf8mb4 = Her şey! Emoji dahil! 😊
+#
+# 🔧 TEKNİK DETAY:
+# Emoji 4 byte gerektirir:
+#   😊 = 0xF0 0x9F 0x98 0x8A (4 byte)
+#
+# utf8 (3 byte max):
+#   😊 → ??? (saklanamaz!)
+#
+# utf8mb4 (4 byte max):
+#   😊 → ✅ Saklanır!
+#
+# 🔗 WORDPRESS İLE İLİŞKİ:
+# WordPress makaleleri:
+#   - Başlık: "Yeni Blog Yazım 🎉"
+#   - İçerik: "Merhaba! 😊 Nasılsınız?"
+#
+# utf8 kullansaydık:
+#   - "Yeni Blog Yazım ???" (emoji kaybolur)
+#
+# utf8mb4 kullanıyoruz:
+#   - "Yeni Blog Yazım 🎉" (emoji korunur)
+#
+# 💡 BEST PRACTICE:
+# 2023 ve sonrası: MUTLAKA utf8mb4 kullan!
+# utf8 kullanma (eski, eksik)
+#
+# ⚠️ PERFORMANS:
+# utf8mb4 biraz daha fazla yer kaplar.
+# Ama modern disk'lerde önemli değil.
+# Emoji desteği > Birkaç KB tasarruf
+# ============================================================================
+character-set-server    = utf8mb4
+
+# ============================================================================
+# AYAR: collation-server = utf8mb4_unicode_ci
+# ============================================================================
+#
+# 📌 NE İŞE YARAR?
+# Metinleri nasıl karşılaştırırız? (sıralama, arama)
+#
+# 🤔 COLLATION NEDİR?
+# Karakter sıralama ve karşılaştırma kuralları:
+#   - "a" ile "A" aynı mı?
+#   - "ç" nereye gelir? (c'den sonra mı?)
+#   - Büyük-küçük harf duyarlı mı?
+#
+# utf8mb4_unicode_ci:
+#   - unicode: Unicode standardı
+#   - ci: Case Insensitive (büyük-küçük harf farketmez)
+#
+# Alternatifler:
+#   utf8mb4_general_ci: Hızlı ama tam doğru değil
+#   utf8mb4_unicode_ci: Yavaş ama doğru ← Bizim tercih
+#   utf8mb4_bin: Binary (büyük-küçük harf farklı)
+#
+# ☕ GÜNLÜK HAYAT ÖRNEĞİ:
+# Sözlük sıralaması:
+#   - Türkçe: a, b, c, ç, d, e, ...
+#   - İngilizce: a, b, c, d, e, ... (ç yok!)
+#   - Collation: Hangi alfabeyi kullanıyoruz?
+#
+# 🔧 ÖRNEK SORGULAR:
+#
+# Case Insensitive (CI):
+#   SELECT * FROM users WHERE name = 'ahmet';
+#   Sonuç: "ahmet", "AHMET", "Ahmet" hepsi eşleşir
+#
+# Case Sensitive (CS):
+#   SELECT * FROM users WHERE name = 'ahmet';
+#   Sonuç: Sadece "ahmet" eşleşir
+#
+# 🔗 WORDPRESS KULLANIMI:
+# Kullanıcı ara:
+#   - Arama: "ahmet"
+#   - Bulunur: "Ahmet", "AHMET", "ahmet"
+#   - ci sayesinde hepsi eşleşir
+#
+# Makale başlığı sırala:
+#   - "Çiçek", "Araba", "Bahçe"
+#   - unicode_ci sıralaması:
+#       1. Araba
+#       2. Bahçe
+#       3. Çiçek (ç, c'den sonra)
+#
+# 💡 utf8mb4_general_ci vs utf8mb4_unicode_ci?
+#
+# general_ci:
+#   - Daha hızlı
+#   - Bazı dillerde yanlış sıralama
+#   - Basit uygulamalar için yeterli
+#
+# unicode_ci:
+#   - Biraz yavaş
+#   - Doğru sıralama (tüm diller)
+#   - Çok dilli siteler için ideal ← WordPress
+#
+# ⚠️ DEĞİŞTİREBİLİR MİSİN?
+# Evet ama sonradan zor:
+#   - Tüm tabloları değiştirmen gerekir
+#   - Data migration gerekir
+#   - Index'leri yeniden oluşturman gerekir
+#
+# İlk kurulumda doğru seç!
+# utf8mb4_unicode_ci → Güvenli tercih
+# ============================================================================
+collation-server        = utf8mb4_unicode_ci
+
+# ============================================================================
+# ÖZET - 50-server.cnf'TEN ÖĞRENDİKLERİMİZ
+# ============================================================================
+#
+# 1. user = mysql → Güvenlik (root değil!)
+# 2. pid-file → Process ID dosyası (yönetim için)
+# 3. socket → Lokal bağlantılar (hızlı)
+# 4. port = 3306 → TCP bağlantılar (network)
+# 5. basedir → Program dosyaları
+# 6. datadir → Veri dosyaları (ÇOK ÖNEMLİ!)
+# 7. tmpdir → Geçici dosyalar
+# 8. bind-address = 0.0.0.0 → Container'lar arası bağlantı (KRİTİK!)
+# 9. character-set = utf8mb4 → Emoji desteği
+# 10. collation = utf8mb4_unicode_ci → Doğru sıralama
+#
+# CONTAINER UYUMLULUĞU:
+# - bind-address = 0.0.0.0 (mutlaka!)
+# - datadir = Volume mount yeri
+# - user = mysql (güvenlik)
+#
+# WORDPRESS UYUMLULUĞU:
+# - utf8mb4 (emoji + Türkçe karakter)
+# - unicode_ci (çok dilli destek)
+# - port 3306 (standart)
+#
+# GÜVENLİK:
+# - root olarak çalışma
+# - Güçlü şifreler (secrets/)
+# - expose only (dış dünyaya açma)
+#
+# ============================================================================
